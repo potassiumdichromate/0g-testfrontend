@@ -13,6 +13,18 @@ interface LogEntry {
 }
 
 type StageStatus = "idle" | "running" | "done" | "failed";
+
+interface ComputeProof {
+  verdict: string;
+  valid: boolean;
+  confidence: number;
+  teeVerified: boolean;
+  providerAddress: string | null;
+  requestId: string | null;
+  billingCost: number | null;
+  flags: string[];
+}
+
 interface Pipeline {
   storage: StageStatus;
   chain: StageStatus;
@@ -23,6 +35,7 @@ interface Pipeline {
   saveIndex?: number;
   checksum?: string;
   fileSize?: number;
+  computeProof?: ComputeProof;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -247,10 +260,25 @@ export default function Dashboard() {
           }
 
           if (save.computeValidation?.verdict && p.compute !== "done" && p.compute !== "failed") {
-            next.compute = save.computeValidation.valid ? "done" : "failed";
-            log("success", `TEE Compute verdict: ${save.computeValidation.verdict} (confidence ${((save.computeValidation.confidence || 0) * 100).toFixed(0)}%)`);
+            const cv = save.computeValidation;
+            next.compute = cv.valid ? "done" : "failed";
+            next.computeProof = {
+              verdict:         cv.verdict,
+              valid:           cv.valid,
+              confidence:      cv.confidence || 0,
+              teeVerified:     cv.teeVerified || false,
+              providerAddress: cv.providerAddress || null,
+              requestId:       cv.requestId || null,
+              billingCost:     cv.billingCost || null,
+              flags:           cv.flags || [],
+            };
+            log("success", `TEE Compute verdict: ${cv.verdict} (confidence ${((cv.confidence || 0) * 100).toFixed(0)}%) — TEE attested: ${cv.teeVerified ? "yes" : "no"}`);
+            if (cv.teeVerified && cv.providerAddress) {
+              log("info", `TEE Provider: ${short(cv.providerAddress, 10)}`);
+            }
+            if (cv.requestId) log("info", `Compute request ID: ${short(cv.requestId, 12)}`);
           } else if (save.computeSkipped && p.compute === "idle") {
-            next.compute = "done"; // skipped = not suspicious, no flags
+            next.compute = "done";
             log("info", "Compute: skipped (delta below threshold — normal save).");
           }
 
@@ -445,6 +473,58 @@ export default function Dashboard() {
               <p className="field-label" style={{ marginTop: 8, color: "#6b7280" }}>
                 DA finalization is still in progress on the network — your save is valid and stored.
               </p>
+            )}
+
+            {/* TEE Compute proof block */}
+            {pipeline.computeProof && (
+              <div className="result-block" style={{ marginTop: 12, borderColor: pipeline.computeProof.valid ? "#1a4a2a" : "#3a1515" }}>
+                <div className="field-label" style={{ marginBottom: 6 }}>TEE Compute Verification</div>
+                <div className="result-row">
+                  <span>Verdict</span>
+                  <span className={pipeline.computeProof.valid ? "text-ok" : "text-err"} style={{ fontWeight: 600 }}>
+                    {pipeline.computeProof.verdict}
+                  </span>
+                </div>
+                <div className="result-row">
+                  <span>Confidence</span>
+                  <span className="mono">{(pipeline.computeProof.confidence * 100).toFixed(0)}%</span>
+                </div>
+                <div className="result-row">
+                  <span>TEE Attested</span>
+                  <span className={pipeline.computeProof.teeVerified ? "text-ok" : "text-warn"}>
+                    {pipeline.computeProof.teeVerified ? "Yes — verified by 0G TEE" : "Not attested"}
+                  </span>
+                </div>
+                {pipeline.computeProof.providerAddress && (
+                  <div className="result-row">
+                    <span>Provider</span>
+                    <span className="mono">{short(pipeline.computeProof.providerAddress, 10)}</span>
+                  </div>
+                )}
+                {pipeline.computeProof.requestId && (
+                  <div className="result-row">
+                    <span>Request ID</span>
+                    <span className="mono">{short(pipeline.computeProof.requestId, 12)}</span>
+                  </div>
+                )}
+                {pipeline.computeProof.billingCost !== null && (
+                  <div className="result-row">
+                    <span>Billing Cost</span>
+                    <span className="mono">{pipeline.computeProof.billingCost} 0G</span>
+                  </div>
+                )}
+                {pipeline.computeProof.flags.length > 0 && (
+                  <div className="result-row">
+                    <span>Flags</span>
+                    <span className="text-err">{pipeline.computeProof.flags.join(", ")}</span>
+                  </div>
+                )}
+                <div className="result-row" style={{ borderBottom: "none", marginTop: 4 }}>
+                  <span style={{ color: "#4a4f62", fontSize: 11 }}>
+                    Verify API usage at <a href="https://pc.0g.ai" target="_blank" rel="noopener noreferrer" className="act-link">pc.0g.ai</a> under your API key
+                  </span>
+                </div>
+              </div>
             )}
 
             {/* Pipeline result details */}
