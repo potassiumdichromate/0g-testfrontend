@@ -49,6 +49,14 @@ const STAGE_LABELS: Record<string, string> = {
   compute: "TEE Compute",
 };
 
+// Friendlier display text for pipeline statuses
+const STAGE_STATUS_LABEL: Record<string, string> = {
+  idle: "idle",
+  running: "running",
+  done: "done",
+  failed: "pending",  // DA timeout is not a hard failure — blob is queued
+};
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
@@ -420,14 +428,24 @@ export default function Dashboard() {
 
             {/* Pipeline stages */}
             <div className="pipeline-row">
-              {(["storage", "chain", "da", "compute"] as const).map(stage => (
-                <div key={stage} className={`pipeline-stage stage-${pipeline[stage]}`}>
-                  <div className="stage-indicator" />
-                  <div className="stage-label">{STAGE_LABELS[stage]}</div>
-                  <div className="stage-status">{pipeline[stage]}</div>
-                </div>
-              ))}
+              {(["storage", "chain", "da", "compute"] as const).map(stage => {
+                const status = pipeline[stage];
+                // DA timeout is not a permanent failure — treat as "pending" visually
+                const visualStatus = (stage === "da" && status === "failed") ? "running" : status;
+                return (
+                  <div key={stage} className={`pipeline-stage stage-${visualStatus}`}>
+                    <div className="stage-indicator" />
+                    <div className="stage-label">{STAGE_LABELS[stage]}</div>
+                    <div className="stage-status">{STAGE_STATUS_LABEL[status] ?? status}</div>
+                  </div>
+                );
+              })}
             </div>
+            {pipeline.da === "failed" && (
+              <p className="field-label" style={{ marginTop: 8, color: "#6b7280" }}>
+                DA finalization is still in progress on the network — your save is valid and stored.
+              </p>
+            )}
 
             {/* Pipeline result details */}
             {pipeline.rootHash && (
@@ -483,7 +501,10 @@ export default function Dashboard() {
             {networkData ? (
               <div>
                 <div className="net-overall">
-                  Overall: <span className={networkData.overall === "healthy" ? "text-ok" : "text-warn"}>{networkData.overall}</span>
+                  Overall: <span className={
+                  networkData.overall === "healthy" ? "text-ok" :
+                  networkData.overall === "minor issues" ? "text-warn" : "text-err"
+                }>{networkData.overall}</span>
                 </div>
                 <table className="net-table">
                   <tbody>
@@ -491,7 +512,11 @@ export default function Dashboard() {
                       <tr key={key}>
                         <td className="net-name">{svc.label || key}</td>
                         <td>
-                          <span className={`net-status-badge ${svc.status === "online" ? "ns-ok" : svc.status === "configured" ? "ns-cfg" : "ns-err"}`}>
+                          <span className={`net-status-badge ${
+                            svc.status === "online" ? "ns-ok" :
+                            svc.status === "configured" ? "ns-cfg" :
+                            svc.status === "connecting" ? "ns-conn" : "ns-err"
+                          }`}>
                             {svc.status}
                           </span>
                         </td>

@@ -503,9 +503,10 @@ body {
   letter-spacing: 0.04em;
 }
 
-.ns-ok  { background: #0d1f14; color: #4ade80; }
-.ns-cfg { background: #1a1a0d; color: #facc15; }
-.ns-err { background: #1a0d0d; color: #f87171; }
+.ns-ok   { background: #0d1f14; color: #4ade80; }
+.ns-cfg  { background: #1a1a0d; color: #facc15; }
+.ns-err  { background: #1a0d0d; color: #f87171; }
+.ns-conn { background: #0e1828; color: #7db8d4; }
 
 /* ── Trust score ──────────────────────────────────────────────────────────── */
 
