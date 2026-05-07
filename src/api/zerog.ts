@@ -18,13 +18,13 @@ export function getNonce(wallet: string) {
   );
 }
 
-export function login(wallet: string, signature: string) {
+export function login(wallet: string, signature: string, nonce: string) {
   return req<{ token: string; wallet: string; expiresIn: number }>(
     "/auth/login",
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ wallet, signature }),
+      body: JSON.stringify({ wallet, signature, nonce }),
     }
   );
 }

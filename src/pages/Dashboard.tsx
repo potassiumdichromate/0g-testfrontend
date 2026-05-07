@@ -127,7 +127,7 @@ export default function Dashboard() {
       setAuthLoading(true);
       log("info", `Requesting nonce for ${short(walletAddress)}`);
 
-      const { message } = await api.getNonce(walletAddress);
+      const { message, nonce } = await api.getNonce(walletAddress);
       log("success", "Nonce received from backend.");
       log("info", "Signing message with wallet...");
 
@@ -144,7 +144,7 @@ export default function Dashboard() {
       });
 
       log("info", "Signature obtained. Exchanging for JWT...");
-      const { token } = await api.login(walletAddress, signature);
+      const { token } = await api.login(walletAddress, signature, nonce);
       setJwt(token);
       log("success", "Authentication complete. JWT valid for 7 days.");
       notify("Authenticated successfully.", "success");
