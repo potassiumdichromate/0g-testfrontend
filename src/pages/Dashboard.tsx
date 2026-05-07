@@ -259,43 +259,64 @@ export default function Dashboard() {
             next.da = "running";
           }
 
-          if (save.computeValidation?.verdict && p.compute !== "done" && p.compute !== "failed") {
-            const cv = save.computeValidation;
-            next.compute = cv.valid ? "done" : "failed";
-            next.computeProof = {
-              verdict:         cv.verdict,
-              valid:           cv.valid,
-              confidence:      cv.confidence || 0,
-              teeVerified:     cv.teeVerified || false,
-              providerAddress: cv.providerAddress || null,
-              requestId:       cv.requestId || null,
-              billingCost:     cv.billingCost || null,
-              flags:           cv.flags || [],
-            };
-            log("success", `TEE Compute verdict: ${cv.verdict} (confidence ${((cv.confidence || 0) * 100).toFixed(0)}%) — TEE attested: ${cv.teeVerified ? "yes" : "no"}`);
-            if (cv.teeVerified && cv.providerAddress) {
-              log("info", `TEE Provider: ${short(cv.providerAddress, 10)}`);
-            }
-            if (cv.requestId) log("info", `Compute request ID: ${short(cv.requestId, 12)}`);
-          } else if (save.computeSkipped && p.compute === "idle") {
-            next.compute = "done";
-            log("info", "Compute: skipped (delta below threshold — normal save).");
+          // Compute result is handled by the dedicated post-poll timer below
+          if (next.chain === "done" && p.compute === "idle") {
+            next.compute = "running";
           }
 
           return next;
         });
 
-        // Stop polling once all meaningful stages are resolved
+        // Stop polling once chain + DA are resolved (compute may still be running)
         const updated = await api.getMetadata(wallet).then(m => m.saves?.find((s: any) => s.saveIndex === saveIndex));
-        const done = (updated?.anchorTxHash || attempts > 10) &&
-          (updated?.daStatus !== "pending" || attempts > 25) &&
-          (updated?.computeValidation || updated?.computeSkipped || attempts > 20);
+        const chainDone = !!(updated?.anchorTxHash || attempts > 10);
+        const daDone   = !!(updated?.daStatus !== "pending" || attempts > 25);
 
-        if (done || attempts >= max) {
+        if ((chainDone && daDone) || attempts >= max) {
           if (pollRef.current) clearInterval(pollRef.current);
-          log("info", "Pipeline monitoring complete.");
-          // Refresh dashboard data
+          log("info", "Chain + DA resolved. Waiting for compute...");
           fetchDashboard(token);
+
+          // Compute runs after DA in the background — poll for it separately
+          let computeChecks = 0;
+          const computeTimer = setInterval(async () => {
+            computeChecks++;
+            try {
+              const meta = await api.getMetadata(wallet);
+              const save = meta.saves?.find((s: any) => s.saveIndex === saveIndex);
+              const cv   = save?.computeValidation;
+              if (cv?.verdict) {
+                clearInterval(computeTimer);
+                setPipeline(p => ({
+                  ...p,
+                  compute: cv.valid ? "done" : "failed",
+                  computeProof: {
+                    verdict:         cv.verdict,
+                    valid:           cv.valid,
+                    confidence:      cv.confidence || 0,
+                    teeVerified:     cv.teeVerified || false,
+                    providerAddress: cv.providerAddress || null,
+                    requestId:       cv.requestId || null,
+                    billingCost:     cv.billingCost || null,
+                    flags:           cv.flags || [],
+                  },
+                }));
+                log("success", `TEE Compute verdict: ${cv.verdict} (confidence ${((cv.confidence || 0) * 100).toFixed(0)}%) — TEE attested: ${cv.teeVerified ? "yes" : "no"}`);
+                if (cv.providerAddress) log("info", `TEE Provider: ${short(cv.providerAddress, 10)}`);
+                if (cv.requestId) log("info", `Compute request ID: ${short(cv.requestId, 12)}`);
+                notify(`Compute: ${cv.verdict}`, cv.valid ? "success" : "warn");
+                fetchDashboard(token);
+              } else if (save?.computeStatus === "skipped") {
+                clearInterval(computeTimer);
+                setPipeline(p => ({ ...p, compute: "done" }));
+                log("info", "Compute: skipped (normal save, no suspicious delta).");
+              }
+            } catch {}
+            if (computeChecks >= 12) { // 60 seconds max for compute
+              clearInterval(computeTimer);
+              log("info", "Pipeline monitoring complete.");
+            }
+          }, 5000);
         }
       } catch (err: any) {
         log("warn", `Poll error: ${err.message}`);
