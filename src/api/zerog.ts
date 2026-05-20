@@ -1,4 +1,4 @@
-const BASE = "https://zerog-zerodash.onrender.com";
+const BASE = "https://zerog-robowars.onrender.com";
 
 async function req<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, options);
